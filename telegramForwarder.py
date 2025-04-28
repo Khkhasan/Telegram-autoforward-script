@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
 """
-Wrapper to call TelegramForwarder.py with correct capitalization
+Telegram Auto Forwarder Wrapper
+
+This wrapper ensures the main script is called correctly and keeps the script running 24/7.
+It starts a web server that can be pinged by UptimeRobot to keep the Replit instance alive.
+
+Usage:
+    Simply run this script to start the Telegram Auto Forwarder.
+
+    python telegramForwarder.py
 """
 
 import os
 import sys
 import traceback
 import logging
+from keep_alive import keep_alive
 
 # Set up detailed logging
 logging.basicConfig(
@@ -18,12 +27,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Start the keep-alive server for UptimeRobot
+keep_alive()
+logger.info("Keep-alive server started for UptimeRobot monitoring")
+logger.info("Your Replit URL can now be monitored at: https://YOUR-REPLIT-URL.repl.co")
+logger.info("Add this URL to UptimeRobot to keep the script running 24/7")
+
 # Simply run the actual file with proper capitalization
 if __name__ == "__main__":
     try:
         logger.info("Starting TelegramForwarder.py wrapper")
         logger.info(f"Current directory: {os.getcwd()}")
-        logger.info(f"Files in directory: {os.listdir('.')}")
         
         # Execute the main script
         logger.info("About to execute TelegramForwarder.py")
