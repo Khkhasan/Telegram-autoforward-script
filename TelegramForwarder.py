@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-from keep_alive import keep_alive
-keep_alive()
 """
 Telegram Auto Forwarder
 
