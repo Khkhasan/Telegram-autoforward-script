@@ -20,10 +20,10 @@ import configparser
 import logging
 import os
 import sys
-import threading
 import time
 import traceback
-from keep_alive import keep_alive
+from flask import Flask
+from threading import Thread
 
 # Set up logging
 logging.basicConfig(
@@ -33,13 +33,53 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ======================== KEEP-ALIVE SERVER ========================
+
+# Create a simple Flask app for UptimeRobot
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Telegram Forwarder is running 24/7!"
+
+@app.route('/ping')
+def ping():
+    """This endpoint is specifically for UptimeRobot to ping"""
+    return "OK"
+
+def run_keep_alive():
+    """Run the Flask server directly on port 8080"""
+    # Disable Flask's internal logging
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+    
+    try:
+        # Run the server
+        app.run(host='0.0.0.0', port=8080, debug=False)
+    except OSError as e:
+        if "Address already in use" in str(e):
+            # Port already in use, try another port
+            logger.info("Port 8080 already in use, trying port 3000...")
+            app.run(host='0.0.0.0', port=3000, debug=False)
+        else:
+            raise
+
+def start_keep_alive():
+    """Start the keep-alive server in a separate thread"""
+    t = Thread(target=run_keep_alive)
+    t.daemon = True
+    t.start()
+    logger.info("Keep alive server started on port 8080!")
+    logger.info("IMPORTANT: Monitor this URL with UptimeRobot: https://YOUR-REPLIT-NAME.replit.app/ping")
+
+# ======================== TELEGRAM FORWARDER ========================
+
 async def start_forwarding():
     """Start the forwarding process with existing configuration"""
     try:
         # Import Telethon first to ensure it's available
         from telethon import TelegramClient, events
         from telethon.errors import SessionPasswordNeededError, FloodWaitError
-        from telethon.tl.types import PeerChannel, PeerChat, PeerUser
         
         # Load configuration from config.ini
         config = configparser.ConfigParser()
@@ -119,7 +159,7 @@ async def start_forwarding():
             """Handle new messages in the source chat."""
             try:
                 # Get the message text
-                message_text = event.message.message
+                message_text = event.message.message or ""
                 
                 # Check if the message contains any of the keywords
                 if keywords and not any(keyword.lower() in message_text.lower() for keyword in keywords):
@@ -147,19 +187,21 @@ async def start_forwarding():
                     logger.info("Message forwarded successfully!")
                 
                 # Sleep to avoid rate limits
-                delay = int(config[forwarding_section].get('delay_seconds', 5))
+                delay = int(config[forwarding_section].get('delay_seconds', '5'))
                 logger.info(f"Waiting {delay} seconds before next forward...")
                 await asyncio.sleep(delay)
                 
             except Exception as e:
                 logger.error(f"Error forwarding message: {e}")
+                logger.error(traceback.format_exc())
         
         # Start event loop
         logger.info(f"Starting automatic forwarding from {source_chat_id} to {destination_chat_id}")
         logger.info(f"Keywords filter: {keywords if keywords else 'None (all messages will be forwarded)'}")
         logger.info("Press Ctrl+C to stop")
+        logger.info("REMINDER: This script will continue running as long as UptimeRobot pings your Replit URL")
         
-        # Keep running until interrupted
+        # Keep the client running
         await client.run_until_disconnected()
         
     except ImportError:
@@ -170,14 +212,28 @@ async def start_forwarding():
         logger.error(traceback.format_exc())
         return False
 
+# ======================== MAIN SCRIPT ========================
+
 async def main():
-    """Main function that coordinates both services"""
     try:
-        # Start the keep-alive server
-        keep_alive()
+        # Start the keep-alive server first
+        start_keep_alive()
+        
+        # Print important info for UptimeRobot setup
+        print("\n" + "="*80)
+        print("IMPORTANT: SET UP UPTIMEROBOT CORRECTLY")
+        print("="*80)
+        print("1. Go to uptimerobot.com and create a free account")
+        print("2. Click 'Add New Monitor'")
+        print("3. Select HTTP(s) monitor type")
+        print("4. Set the URL to: https://YOUR-REPLIT-NAME.replit.app/ping")
+        print("   (Replace YOUR-REPLIT-NAME with your actual Replit project name)")
+        print("5. Set monitoring interval to 5 minutes")
+        print("6. Click 'Create Monitor'")
+        print("="*80 + "\n")
         
         # Give the keep-alive server a moment to start
-        time.sleep(1)
+        time.sleep(2)
         
         # Start the Telegram forwarder
         logger.info("Starting Telegram Auto Forwarder in 24/7 mode...")
@@ -190,5 +246,17 @@ async def main():
 
 
 if __name__ == "__main__":
-    # Use asyncio.run() for Python 3.7+
-    asyncio.run(main())
+    # Loop forever to restart if there are any issues
+    while True:
+        try:
+            # Use asyncio.run() for Python 3.7+
+            asyncio.run(main())
+        except KeyboardInterrupt:
+            # Exit cleanly on Ctrl+C
+            print("\nShutting down by user request...")
+            sys.exit(0)
+        except Exception as e:
+            # Any other exception, log and restart
+            print(f"ERROR: {e}")
+            print("Restarting in 10 seconds...")
+            time.sleep(10)
